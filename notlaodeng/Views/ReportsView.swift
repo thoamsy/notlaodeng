@@ -15,41 +15,43 @@ struct ReportsView: View {
     @Query(sort: \HealthReport.testDate, order: .reverse) private var reports: [HealthReport]
 
     @State private var showingImportAlert = false
+    @State private var showingScanner = false
+    @State private var showingPDFImport = false
 
     var body: some View {
         NavigationStack {
             Group {
                 if reports.isEmpty {
-                    ContentUnavailableView {
-                        Label("No Reports", systemImage: "doc.text")
-                    } description: {
-                        Text("Your health reports will appear here.")
-                    } actions: {
-                        Button("Import Sample Data") {
-                            showingImportAlert = true
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
+                    emptyStateView
                 } else {
-                    List {
-                        ForEach(reports) { report in
-                            reportRow(report)
-                        }
-                        .onDelete(perform: deleteReports)
-                    }
+                    reportsList
                 }
             }
             .navigationTitle("Reports")
             .toolbar {
-                if !reports.isEmpty {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            Button("Import 2025 Report") {
-                                showingImportAlert = true
-                            }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            showingScanner = true
                         } label: {
-                            Image(systemName: "plus")
+                            Label("Scan Report", systemImage: "doc.viewfinder")
                         }
+
+                        Button {
+                            showingPDFImport = true
+                        } label: {
+                            Label("Import PDF", systemImage: "doc.badge.plus")
+                        }
+
+                        Divider()
+
+                        Button {
+                            showingImportAlert = true
+                        } label: {
+                            Label("Import Sample Data", systemImage: "square.and.arrow.down")
+                        }
+                    } label: {
+                        Image(systemName: "plus")
                     }
                 }
             }
@@ -61,9 +63,68 @@ struct ReportsView: View {
             } message: {
                 Text("Import the 2025-04-24 health checkup data?")
             }
+            .fullScreenCover(isPresented: $showingScanner) {
+                ScanReportView()
+            }
+            .fullScreenCover(isPresented: $showingPDFImport) {
+                PDFImportView()
+            }
         }
         .id(forceRedraw)
         .eraseToAnyView()
+    }
+
+    // MARK: - Empty State
+
+    private var emptyStateView: some View {
+        ContentUnavailableView {
+            Label("No Reports", systemImage: "doc.text")
+        } description: {
+            Text("Scan your health reports or import PDF files to get started.")
+        } actions: {
+            VStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    Button {
+                        showingScanner = true
+                    } label: {
+                        Label("Scan", systemImage: "doc.viewfinder")
+                            .frame(minWidth: 100)
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button {
+                        showingPDFImport = true
+                    } label: {
+                        Label("PDF", systemImage: "doc.badge.plus")
+                            .frame(minWidth: 100)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                Button {
+                    showingImportAlert = true
+                } label: {
+                    Label("Import Sample", systemImage: "square.and.arrow.down")
+                        .frame(minWidth: 160)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+    }
+
+    // MARK: - Reports List
+
+    private var reportsList: some View {
+        List {
+            ForEach(reports) { report in
+                NavigationLink {
+                    ReportDetailView(report: report)
+                } label: {
+                    reportRow(report)
+                }
+            }
+            .onDelete(perform: deleteReports)
+        }
     }
 
     private func reportRow(_ report: HealthReport) -> some View {
@@ -81,9 +142,24 @@ struct ReportsView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
-            Text("\(report.records.count) indicators")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("\(report.records.count) indicators")
+
+                let abnormalCount = report.records.filter { record in
+                    record.status(for: .male).isAbnormal
+                }.count
+
+                if abnormalCount > 0 {
+                    Text("•")
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                        Text("\(abnormalCount) abnormal")
+                    }
+                    .foregroundStyle(.orange)
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
         .padding(.vertical, 4)
     }
@@ -95,8 +171,109 @@ struct ReportsView: View {
     }
 }
 
-#Preview {
-    ReportsView()
-        .modelContainer(for: HealthReport.self, inMemory: true)
+// MARK: - Report Detail View
+
+struct ReportDetailView: View {
+    let report: HealthReport
+
+    @Query private var profiles: [UserProfile]
+
+    private var currentGender: Gender {
+        profiles.first?.gender ?? .male
+    }
+
+    private var sortedRecords: [HealthRecord] {
+        report.records.sorted { ($0.template?.name ?? "") < ($1.template?.name ?? "") }
+    }
+
+    private var abnormalRecords: [HealthRecord] {
+        sortedRecords.filter { $0.status(for: currentGender).isAbnormal }
+    }
+
+    private var normalRecords: [HealthRecord] {
+        sortedRecords.filter { !$0.status(for: currentGender).isAbnormal }
+    }
+
+    var body: some View {
+        List {
+            // 报告信息
+            Section {
+                LabeledContent("Date", value: report.testDate.formatted(date: .long, time: .omitted))
+                if let labName = report.labName {
+                    LabeledContent("Lab", value: labName)
+                }
+                LabeledContent("Total Indicators", value: "\(report.records.count)")
+            }
+
+            // 异常指标
+            if !abnormalRecords.isEmpty {
+                Section("Abnormal (\(abnormalRecords.count))") {
+                    ForEach(abnormalRecords) { record in
+                        RecordRowInReport(record: record, gender: currentGender)
+                    }
+                }
+            }
+
+            // 正常指标
+            if !normalRecords.isEmpty {
+                Section("Normal (\(normalRecords.count))") {
+                    ForEach(normalRecords) { record in
+                        RecordRowInReport(record: record, gender: currentGender)
+                    }
+                }
+            }
+        }
+        .navigationTitle(report.name)
+    }
 }
 
+// MARK: - Record Row in Report
+
+struct RecordRowInReport: View {
+    let record: HealthRecord
+    let gender: Gender
+
+    private var status: HealthStatus {
+        record.status(for: gender)
+    }
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(record.template?.name ?? "Unknown")
+                        .font(.headline)
+
+                    if status.isAbnormal {
+                        Image(systemName: status.icon)
+                            .font(.caption)
+                            .foregroundStyle(status.color)
+                    }
+                }
+
+                if let template = record.template {
+                    Text(template.referenceRangeText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(record.formattedValue)
+                    .font(.headline)
+                    .foregroundStyle(status.isAbnormal ? status.color : .primary)
+
+                Text(record.template?.unit ?? "")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+#Preview {
+    ReportsView()
+        .modelContainer(for: [HealthReport.self, UserProfile.self], inMemory: true)
+}

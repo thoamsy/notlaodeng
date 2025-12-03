@@ -5,8 +5,8 @@
 //  指标列表视图
 //
 
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 // MARK: - 过滤选项
 
@@ -41,10 +41,11 @@ struct IndicatorListView: View {
     @Query(sort: \IndicatorTemplate.name) private var templates: [IndicatorTemplate]
     @Query private var profiles: [UserProfile]
 
-    @State private var selectedCategory: IndicatorCategory?
-    @State private var selectedBodyZone: BodyZone?
+    @State private var selectedCategories: Set<IndicatorCategory> = []
+    @State private var selectedBodyZones: Set<BodyZone> = []
     @State private var selectedFilter: IndicatorFilter = .all
     @State private var searchText = ""
+    @State private var showingFilterSheet = false
 
     private var currentGender: Gender {
         profiles.first?.gender ?? .male
@@ -84,21 +85,21 @@ struct IndicatorListView: View {
             }
         }
 
-        // 分类过滤
-        if let category = selectedCategory {
-            result = result.filter { $0.category == category }
+        // 分类过滤（多选）
+        if !selectedCategories.isEmpty {
+            result = result.filter { selectedCategories.contains($0.category) }
         }
 
-        // 身体部位过滤
-        if let bodyZone = selectedBodyZone {
-            result = result.filter { $0.bodyZone == bodyZone }
+        // 身体部位过滤（多选）
+        if !selectedBodyZones.isEmpty {
+            result = result.filter { selectedBodyZones.contains($0.bodyZone) }
         }
 
         // 搜索过滤
         if !searchText.isEmpty {
             result = result.filter {
-                $0.name.localizedCaseInsensitiveContains(searchText) ||
-                ($0.abbreviation?.localizedCaseInsensitiveContains(searchText) ?? false)
+                $0.name.localizedCaseInsensitiveContains(searchText)
+                    || ($0.abbreviation?.localizedCaseInsensitiveContains(searchText) ?? false)
             }
         }
 
@@ -110,7 +111,11 @@ struct IndicatorListView: View {
     }
 
     private var hasActiveFilter: Bool {
-        selectedCategory != nil || selectedBodyZone != nil
+        !selectedCategories.isEmpty || !selectedBodyZones.isEmpty
+    }
+
+    private var activeFilterCount: Int {
+        selectedCategories.count + selectedBodyZones.count
     }
 
     var body: some View {
@@ -139,74 +144,37 @@ struct IndicatorListView: View {
             .searchable(text: $searchText, prompt: "Search indicators")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    filterMenu
+                    Button {
+                        showingFilterSheet = true
+                    } label: {
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: "slider.horizontal.3")
+                                .font(.body)
+
+                            if activeFilterCount > 0 {
+                                Text("\(activeFilterCount)")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 16, height: 16)
+                                    .background(.blue)
+                                    .clipShape(Circle())
+                                    .offset(x: 8, y: -8)
+                            }
+                        }
+                    }
                 }
+            }
+            .sheet(isPresented: $showingFilterSheet) {
+                FilterSheetView(
+                    selectedCategories: $selectedCategories,
+                    selectedBodyZones: $selectedBodyZones
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
             }
         }
         .id(forceRedraw)
         .eraseToAnyView()
-    }
-
-    // MARK: - 过滤菜单
-
-    private var filterMenu: some View {
-        Menu {
-            // 分类过滤
-            Section("Category") {
-                Button {
-                    selectedCategory = nil
-                } label: {
-                    Label("All Categories", systemImage: selectedCategory == nil ? "checkmark" : "")
-                }
-
-                ForEach(IndicatorCategory.allCases, id: \.self) { category in
-                    Button {
-                        selectedCategory = category
-                    } label: {
-                        Label {
-                            Text(category.rawValue)
-                        } icon: {
-                            Image(systemName: selectedCategory == category ? "checkmark" : category.icon)
-                        }
-                    }
-                }
-            }
-
-            Divider()
-
-            // 身体部位过滤
-            Section("Body Zone") {
-                Button {
-                    selectedBodyZone = nil
-                } label: {
-                    Label("All Zones", systemImage: selectedBodyZone == nil ? "checkmark" : "")
-                }
-
-                ForEach(BodyZone.allCases, id: \.self) { zone in
-                    Button {
-                        selectedBodyZone = zone
-                    } label: {
-                        Label {
-                            Text(zone.rawValue)
-                        } icon: {
-                            Image(systemName: selectedBodyZone == zone ? "checkmark" : zone.icon)
-                        }
-                    }
-                }
-            }
-
-            if hasActiveFilter {
-                Divider()
-                Button(role: .destructive) {
-                    selectedCategory = nil
-                    selectedBodyZone = nil
-                } label: {
-                    Label("Clear All Filters", systemImage: "xmark.circle")
-                }
-            }
-        } label: {
-            Label("Filter", systemImage: hasActiveFilter ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-        }
     }
 
     // MARK: - 快速过滤栏
@@ -234,33 +202,51 @@ struct IndicatorListView: View {
 
     // MARK: - 当前过滤条件
 
+    @ViewBuilder
     private var activeFiltersBar: some View {
+        let bgColor = Color.gray.opacity(0.1)
+
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                if let category = selectedCategory {
-                    ActiveFilterTag(
+                ForEach(Array(selectedCategories), id: \.self) { category in
+                    GlassFilterTag(
                         icon: category.icon,
-                        text: category.rawValue,
-                        color: .purple
+                        text: category.rawValue
                     ) {
-                        withAnimation { selectedCategory = nil }
+                        withAnimation(.spring(response: 0.3)) {
+                            _ = selectedCategories.remove(category)
+                        }
                     }
                 }
 
-                if let zone = selectedBodyZone {
-                    ActiveFilterTag(
+                ForEach(Array(selectedBodyZones), id: \.self) { zone in
+                    GlassFilterTag(
                         icon: zone.icon,
-                        text: zone.rawValue,
-                        color: .teal
+                        text: zone.rawValue
                     ) {
-                        withAnimation { selectedBodyZone = nil }
+                        withAnimation(.spring(response: 0.3)) {
+                            _ = selectedBodyZones.remove(zone)
+                        }
+                    }
+                }
+
+                if hasActiveFilter {
+                    Button {
+                        withAnimation(.spring(response: 0.3)) {
+                            selectedCategories.removeAll()
+                            selectedBodyZones.removeAll()
+                        }
+                    } label: {
+                        Text("Clear All")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
             .padding(.horizontal)
             .padding(.vertical, 8)
         }
-        .background(Color(.systemGray6))
+        .background(bgColor)
     }
 
     private func countFor(_ filter: IndicatorFilter) -> Int {
@@ -297,7 +283,8 @@ struct IndicatorListView: View {
 
     private var indicatorList: some View {
         List {
-            ForEach(IndicatorCategory.allCases.filter { groupedTemplates[$0] != nil }, id: \.self) { category in
+            ForEach(IndicatorCategory.allCases.filter { groupedTemplates[$0] != nil }, id: \.self) {
+                category in
                 Section {
                     ForEach(groupedTemplates[category] ?? []) { template in
                         IndicatorRow(template: template, gender: currentGender)
@@ -307,6 +294,271 @@ struct IndicatorListView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - 过滤器 Sheet
+
+struct FilterSheetView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var selectedCategories: Set<IndicatorCategory>
+    @Binding var selectedBodyZones: Set<BodyZone>
+
+    // 临时状态，不会立即影响列表
+    @State private var tempCategories: Set<IndicatorCategory> = []
+    @State private var tempBodyZones: Set<BodyZone> = []
+
+    private var hasChanges: Bool {
+        tempCategories != selectedCategories || tempBodyZones != selectedBodyZones
+    }
+
+    private var hasTempSelections: Bool {
+        !tempCategories.isEmpty || !tempBodyZones.isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    // Category Section
+                    FilterSection(title: "Category", icon: "folder") {
+                        FlowLayout(spacing: 10) {
+                            ForEach(IndicatorCategory.allCases, id: \.self) { category in
+                                GlassSelectableBadge(
+                                    icon: category.icon,
+                                    text: category.rawValue,
+                                    isSelected: tempCategories.contains(category)
+                                ) {
+                                    if tempCategories.contains(category) {
+                                        _ = tempCategories.remove(category)
+                                    } else {
+                                        tempCategories.insert(category)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Body Zone Section
+                    FilterSection(title: "Body Zone", icon: "figure.stand") {
+                        FlowLayout(spacing: 10) {
+                            ForEach(BodyZone.allCases, id: \.self) { zone in
+                                GlassSelectableBadge(
+                                    icon: zone.icon,
+                                    text: zone.rawValue,
+                                    isSelected: tempBodyZones.contains(zone)
+                                ) {
+                                    if tempBodyZones.contains(zone) {
+                                        _ = tempBodyZones.remove(zone)
+                                    } else {
+                                        tempBodyZones.insert(zone)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding()
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("Filters")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Reset") {
+                        selectedCategories.removeAll()
+                        selectedBodyZones.removeAll()
+                        dismiss()
+                    }
+                    .foregroundStyle(hasTempSelections ? .red : .secondary)
+                    .disabled(!hasTempSelections)
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        // 只有点击 Done 才保存更改
+                        selectedCategories = tempCategories
+                        selectedBodyZones = tempBodyZones
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .onAppear {
+            // 初始化临时状态
+            tempCategories = selectedCategories
+            tempBodyZones = selectedBodyZones
+        }
+    }
+}
+
+// MARK: - Filter Section
+
+struct FilterSection<Content: View>: View {
+    let title: String
+    let icon: String
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                Text(title)
+                    .font(.headline)
+            }
+
+            content()
+        }
+    }
+}
+
+// MARK: - Flow Layout (flex-wrap)
+
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let result = FlowResult(in: proposal.width ?? 0, subviews: subviews, spacing: spacing)
+        return result.size
+    }
+
+    func placeSubviews(
+        in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+    ) {
+        let result = FlowResult(in: bounds.width, subviews: subviews, spacing: spacing)
+        for (index, subview) in subviews.enumerated() {
+            subview.place(
+                at: CGPoint(
+                    x: bounds.minX + result.positions[index].x,
+                    y: bounds.minY + result.positions[index].y),
+                proposal: .unspecified)
+        }
+    }
+
+    struct FlowResult {
+        var size: CGSize = .zero
+        var positions: [CGPoint] = []
+
+        init(in maxWidth: CGFloat, subviews: Subviews, spacing: CGFloat) {
+            var x: CGFloat = 0
+            var y: CGFloat = 0
+            var lineHeight: CGFloat = 0
+
+            for subview in subviews {
+                let size = subview.sizeThatFits(.unspecified)
+
+                if x + size.width > maxWidth && x > 0 {
+                    x = 0
+                    y += lineHeight + spacing
+                    lineHeight = 0
+                }
+
+                positions.append(CGPoint(x: x, y: y))
+                lineHeight = max(lineHeight, size.height)
+                x += size.width + spacing
+
+                self.size.width = max(self.size.width, x - spacing)
+            }
+
+            self.size.height = y + lineHeight
+        }
+    }
+}
+
+// MARK: - iOS 26 风格透明 Badge（可选中）
+
+struct GlassSelectableBadge: View {
+    let icon: String
+    let text: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .medium))
+
+                Text(text)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .foregroundStyle(isSelected ? .white : .primary.opacity(0.85))
+            .background {
+                if isSelected {
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [.blue, .blue.opacity(0.85)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                } else {
+                    Capsule()
+                        .fill(.white.opacity(0.7))
+                        .background(
+                            Capsule()
+                                .fill(.thinMaterial)
+                        )
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(
+                                    LinearGradient(
+                                        colors: [.white.opacity(0.6), .white.opacity(0.2)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1
+                                )
+                        )
+                }
+            }
+            .shadow(
+                color: isSelected ? .blue.opacity(0.35) : .black.opacity(0.06),
+                radius: isSelected ? 10 : 4, y: isSelected ? 4 : 2)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - 当前过滤标签（玻璃风格）
+
+struct GlassFilterTag: View {
+    let icon: String
+    let text: String
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .medium))
+
+            Text(text)
+                .font(.caption)
+                .fontWeight(.medium)
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .foregroundStyle(.primary)
+        .background(.ultraThinMaterial)
+        .clipShape(Capsule())
+        .overlay(
+            Capsule()
+                .strokeBorder(.quaternary, lineWidth: 0.5)
+        )
     }
 }
 
@@ -325,35 +577,6 @@ struct CategorySectionHeader: View {
                 .font(.subheadline)
                 .fontWeight(.semibold)
         }
-    }
-}
-
-// MARK: - 当前过滤标签
-
-struct ActiveFilterTag: View {
-    let icon: String
-    let text: String
-    let color: Color
-    let onRemove: () -> Void
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.caption)
-
-            Text(text)
-                .font(.caption)
-
-            Button(action: onRemove) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.caption)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .foregroundStyle(color)
-        .background(color.opacity(0.15))
-        .clipShape(Capsule())
     }
 }
 
@@ -501,5 +724,6 @@ struct StatusBadge: View {
 
 #Preview {
     IndicatorListView()
-        .modelContainer(for: [IndicatorTemplate.self, HealthRecord.self, UserProfile.self], inMemory: true)
+        .modelContainer(
+            for: [IndicatorTemplate.self, HealthRecord.self, UserProfile.self], inMemory: true)
 }

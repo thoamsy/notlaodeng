@@ -5,6 +5,7 @@
 //  PDF 导入视图
 //
 
+import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -21,7 +22,9 @@ struct DocumentPicker: UIViewControllerRepresentable {
         return picker
     }
 
-    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+    func updateUIViewController(
+        _ uiViewController: UIDocumentPickerViewController, context: Context
+    ) {}
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onPick: onPick, onCancel: onCancel)
@@ -36,7 +39,9 @@ struct DocumentPicker: UIViewControllerRepresentable {
             self.onCancel = onCancel
         }
 
-        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        func documentPicker(
+            _ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]
+        ) {
             guard let url = urls.first else {
                 onCancel()
                 return
@@ -71,8 +76,8 @@ struct PDFImportView: View {
                 } else if let report = parsedReport {
                     ScanResultView(
                         report: report,
-                        onConfirm: { selectedIndicators in
-                            saveIndicators(selectedIndicators)
+                        onConfirm: { selectedIndicators, date in
+                            saveIndicators(selectedIndicators, testDate: date)
                         },
                         onRescan: {
                             resetAndReselect()
@@ -201,8 +206,61 @@ struct PDFImportView: View {
         showingPicker = true
     }
 
-    private func saveIndicators(_ indicators: [ParsedIndicator]) {
-        // TODO: 匹配现有模板或创建新模板，保存记录
+    private func saveIndicators(_ indicators: [ParsedIndicator], testDate: Date) {
+        guard !indicators.isEmpty else {
+            dismiss()
+            return
+        }
+
+        // 创建体检报告
+        let report = HealthReport(
+            name: "PDF Import \(testDate.formatted(date: .abbreviated, time: .omitted))",
+            testDate: testDate,
+            labName: nil
+        )
+        modelContext.insert(report)
+
+        // 获取所有现有模板
+        let descriptor = FetchDescriptor<IndicatorTemplate>()
+        let templates = (try? modelContext.fetch(descriptor)) ?? []
+
+        for indicator in indicators {
+            // 尝试匹配现有模板
+            let matchedTemplate = templates.first { template in
+                template.name == indicator.name || template.englishName == indicator.name
+                    || template.abbreviation == indicator.name
+            }
+
+            let template: IndicatorTemplate
+            if let existing = matchedTemplate {
+                template = existing
+            } else {
+                // 创建新模板
+                template = IndicatorTemplate(
+                    name: indicator.name,
+                    unit: indicator.unit,
+                    bodyZone: .fullBody,
+                    category: .other,
+                    referenceRangeMin: indicator.referenceMin,
+                    referenceRangeMax: indicator.referenceMax,
+                    referenceRangeText: indicator.referenceRange.isEmpty
+                        ? "-" : indicator.referenceRange
+                )
+                modelContext.insert(template)
+            }
+
+            // 创建健康记录
+            let record = HealthRecord(
+                value: indicator.value,
+                testDate: testDate,
+                source: .imported,
+                template: template,
+                report: report
+            )
+            modelContext.insert(record)
+        }
+
+        try? modelContext.save()
         dismiss()
     }
 }
@@ -212,4 +270,3 @@ struct PDFImportView: View {
 #Preview {
     PDFImportView()
 }
-

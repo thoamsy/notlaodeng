@@ -5,6 +5,7 @@
 //  文档扫描视图 (VisionKit)
 //
 
+import SwiftData
 import SwiftUI
 import VisionKit
 
@@ -84,8 +85,8 @@ struct ScanReportView: View {
         } else if let report = parsedReport {
           ScanResultView(
             report: report,
-            onConfirm: { selectedIndicators in
-              saveIndicators(selectedIndicators)
+            onConfirm: { selectedIndicators, date in
+              saveIndicators(selectedIndicators, testDate: date)
             },
             onRescan: {
               resetAndRescan()
@@ -185,8 +186,60 @@ struct ScanReportView: View {
     showingScanner = true
   }
 
-  private func saveIndicators(_ indicators: [ParsedIndicator]) {
-    // TODO: 匹配现有模板或创建新模板，保存记录
+  private func saveIndicators(_ indicators: [ParsedIndicator], testDate: Date) {
+    guard !indicators.isEmpty else {
+      dismiss()
+      return
+    }
+
+    // 创建体检报告
+    let report = HealthReport(
+      name: "Scanned Report \(testDate.formatted(date: .abbreviated, time: .omitted))",
+      testDate: testDate,
+      labName: nil
+    )
+    modelContext.insert(report)
+
+    // 获取所有现有模板
+    let descriptor = FetchDescriptor<IndicatorTemplate>()
+    let templates = (try? modelContext.fetch(descriptor)) ?? []
+
+    for indicator in indicators {
+      // 尝试匹配现有模板
+      let matchedTemplate = templates.first { template in
+        template.name == indicator.name || template.englishName == indicator.name
+          || template.abbreviation == indicator.name
+      }
+
+      let template: IndicatorTemplate
+      if let existing = matchedTemplate {
+        template = existing
+      } else {
+        // 创建新模板
+        template = IndicatorTemplate(
+          name: indicator.name,
+          unit: indicator.unit,
+          bodyZone: .fullBody,
+          category: .other,
+          referenceRangeMin: indicator.referenceMin,
+          referenceRangeMax: indicator.referenceMax,
+          referenceRangeText: indicator.referenceRange.isEmpty ? "-" : indicator.referenceRange
+        )
+        modelContext.insert(template)
+      }
+
+      // 创建健康记录
+      let record = HealthRecord(
+        value: indicator.value,
+        testDate: testDate,
+        source: .ocr,
+        template: template,
+        report: report
+      )
+      modelContext.insert(record)
+    }
+
+    try? modelContext.save()
     dismiss()
   }
 }
@@ -195,12 +248,13 @@ struct ScanReportView: View {
 
 struct ScanResultView: View {
   let report: ParsedReport
-  let onConfirm: ([ParsedIndicator]) -> Void
+  let onConfirm: ([ParsedIndicator], Date) -> Void
   let onRescan: () -> Void
 
   @State private var selectedIndicators: Set<UUID> = []
   @State private var editingIndicator: ParsedIndicator?
   @State private var showingRawText = false
+  @State private var reportDate: Date = Date()
 
   var body: some View {
     VStack(spacing: 0) {
@@ -209,6 +263,16 @@ struct ScanResultView: View {
 
       // 指标列表
       List {
+        // 日期选择
+        Section("Report Date") {
+          DatePicker(
+            "Test Date",
+            selection: $reportDate,
+            in: ...Date(),
+            displayedComponents: .date
+          )
+        }
+
         if report.indicators.isEmpty {
           noIndicatorsView
         } else {
@@ -330,7 +394,7 @@ struct ScanResultView: View {
 
       Button {
         let selected = report.indicators.filter { selectedIndicators.contains($0.id) }
-        onConfirm(selected)
+        onConfirm(selected, reportDate)
       } label: {
         Label("Import \(selectedIndicators.count)", systemImage: "square.and.arrow.down")
           .frame(maxWidth: .infinity)

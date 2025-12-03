@@ -5,8 +5,8 @@
 //  体检报告列表视图
 //
 
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 struct ReportsView: View {
     @ObserveInjection var forceRedraw
@@ -17,6 +17,8 @@ struct ReportsView: View {
     @State private var showingImportAlert = false
     @State private var showingScanner = false
     @State private var showingPDFImport = false
+    @State private var reportToDelete: HealthReport?
+    @State private var showingDeleteConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -59,7 +61,7 @@ struct ReportsView: View {
                 Button("Import") {
                     SeedData.importHealthReport_20250424(modelContext: modelContext)
                 }
-                Button("Cancel", role: .cancel) { }
+                Button("Cancel", role: .cancel) {}
             } message: {
                 Text("Import the 2025-04-24 health checkup data?")
             }
@@ -68,6 +70,20 @@ struct ReportsView: View {
             }
             .fullScreenCover(isPresented: $showingPDFImport) {
                 PDFImportView()
+            }
+            .alert(
+                "Delete Report", isPresented: $showingDeleteConfirmation, presenting: reportToDelete
+            ) { report in
+                Button("Delete", role: .destructive) {
+                    deleteReport(report)
+                }
+                Button("Cancel", role: .cancel) {
+                    reportToDelete = nil
+                }
+            } message: { report in
+                Text(
+                    "This will also delete \(report.records.count) associated health records. This action cannot be undone."
+                )
             }
         }
         .id(forceRedraw)
@@ -133,7 +149,9 @@ struct ReportsView: View {
                 .font(.headline)
 
             HStack {
-                Label(report.testDate.formatted(date: .abbreviated, time: .omitted), systemImage: "calendar")
+                Label(
+                    report.testDate.formatted(date: .abbreviated, time: .omitted),
+                    systemImage: "calendar")
 
                 if let labName = report.labName {
                     Label(labName, systemImage: "building.2")
@@ -165,16 +183,28 @@ struct ReportsView: View {
     }
 
     private func deleteReports(at offsets: IndexSet) {
-        for index in offsets {
-            modelContext.delete(reports[index])
+        guard let index = offsets.first else { return }
+        reportToDelete = reports[index]
+        showingDeleteConfirmation = true
+    }
+
+    private func deleteReport(_ report: HealthReport) {
+        // 先删除关联的健康记录
+        for record in report.records {
+            modelContext.delete(record)
         }
+        // 再删除报告本身
+        modelContext.delete(report)
+        try? modelContext.save()
+        reportToDelete = nil
     }
 }
 
 // MARK: - Report Detail View
 
 struct ReportDetailView: View {
-    let report: HealthReport
+    @Bindable var report: HealthReport
+    @State private var showingEditSheet = false
 
     @Query private var profiles: [UserProfile]
 
@@ -198,7 +228,8 @@ struct ReportDetailView: View {
         List {
             // 报告信息
             Section {
-                LabeledContent("Date", value: report.testDate.formatted(date: .long, time: .omitted))
+                LabeledContent(
+                    "Date", value: report.testDate.formatted(date: .long, time: .omitted))
                 if let labName = report.labName {
                     LabeledContent("Lab", value: labName)
                 }
@@ -224,6 +255,90 @@ struct ReportDetailView: View {
             }
         }
         .navigationTitle(report.name)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showingEditSheet = true
+                } label: {
+                    Text("Edit")
+                }
+            }
+        }
+        .sheet(isPresented: $showingEditSheet) {
+            EditReportSheet(report: report)
+        }
+    }
+}
+
+// MARK: - Edit Report Sheet
+
+struct EditReportSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Bindable var report: HealthReport
+
+    @State private var name: String = ""
+    @State private var testDate: Date = Date()
+    @State private var labName: String = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Report Name") {
+                    TextField("Name", text: $name)
+                }
+
+                Section("Test Date") {
+                    DatePicker(
+                        "Date",
+                        selection: $testDate,
+                        in: ...Date(),
+                        displayedComponents: .date
+                    )
+                }
+
+                Section("Lab / Hospital") {
+                    TextField("Lab name (optional)", text: $labName)
+                }
+            }
+            .navigationTitle("Edit Report")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        saveChanges()
+                        dismiss()
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            .onAppear {
+                name = report.name
+                testDate = report.testDate
+                labName = report.labName ?? ""
+            }
+        }
+    }
+
+    private func saveChanges() {
+        report.name = name.trimmingCharacters(in: .whitespaces)
+
+        // 如果日期改变，同步更新所有关联记录的日期
+        if report.testDate != testDate {
+            report.testDate = testDate
+            for record in report.records {
+                record.testDate = testDate
+            }
+        }
+
+        report.labName =
+            labName.trimmingCharacters(in: .whitespaces).isEmpty
+            ? nil
+            : labName.trimmingCharacters(in: .whitespaces)
     }
 }
 

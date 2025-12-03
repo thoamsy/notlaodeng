@@ -1,0 +1,20 @@
+# pack-refs with: peeled fully-peeled sorted 
+10f9f3b4bcf8b44822a39fe2b5efd927be44a421 refs/heads/automated_fixup_code_of_conduct_file_exists
+204cf0ba78d604975ba01a240bc3844c104b6b10 refs/heads/automated_fixup_contributing_file_exists
+2506520d827ff3f8b5fec800797e10f9b6ef92f5 refs/heads/master
+fb72dd3e7802b0be6965b0bc09e9631e807740b4 refs/heads/tests
+e7f34c0f4f57b98860438d7766c29830c2502a9f refs/heads/two-level-namespace
+ffb62e22424146eaf4b782a38d11e418d9f00779 refs/tags/0.1
+d172d5247aa590c25d0b1885448bae76036ea22c refs/tags/0.2
+c61658e5793c48a81f7d66db5bc0e16164ed3af3 refs/tags/1.0.0
+^838e967276a385f3fe608f4ab78e0566b5601e50
+569b223aecabac3bf833e3d2acc28d215017528c refs/tags/1.0.1
+^838e967276a385f3fe608f4ab78e0566b5601e50
+f486b1e2fe8f2d33dac6ddc717c3cde18987b107 refs/tags/1.1.0
+^5b59158940845f611a3a3180a49c7280bb2a22dc
+e8b239ad320d21c44cd2ac52d264dbc8d7057e0f refs/tags/1.1.1
+^a7f73993b1f8b720c7a30af1a80f78177746bc9b
+a60415c9ba5f214b89c428b8d4bf209f502fe7af refs/tags/1.2.0
+^d70d4c99b6f9f7147b07bfb63ab6a3c0846c83b7
+a85bc035eaff669e114f1c7e122ca738449aee52 refs/tags/1.2.1
+^2506520d827ff3f8b5fec800797e10f9b6ef92f5

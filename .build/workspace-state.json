@@ -1,0 +1,98 @@
+{
+  "object" : {
+    "artifacts" : [
+
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "dlkit",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/johnno1962/DLKit",
+          "name" : "DLKit"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "997da8155b2b176376727c1296f3816e25bf3451",
+            "version" : "3.5.5"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "DLKit"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "fishhook",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/johnno1962/fishhook",
+          "name" : "fishhook"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "2506520d827ff3f8b5fec800797e10f9b6ef92f5",
+            "version" : "1.2.1"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "fishhook"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "injectionlite",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/johnno1962/InjectionLite",
+          "name" : "InjectionLite"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "49ef136d023009f7f8e0adb6eeb4cd8da0369aec",
+            "version" : "1.2.16"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "InjectionLite"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "popen",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/johnno1962/Popen",
+          "name" : "Popen"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "095a0ddb2db96df84a3296fdb19a8f573a559257",
+            "version" : "2.1.9"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "Popen"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "swiftregex5",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/johnno1962/SwiftRegex5",
+          "name" : "SwiftRegex"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "60fde2e2e3b691abb35ba4b67e3f0adc82f6d1f5",
+            "version" : "6.1.3"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "SwiftRegex5"
+      }
+    ],
+    "prebuilts" : [
+
+    ]
+  },
+  "version" : 7
+}

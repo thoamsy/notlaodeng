@@ -68,23 +68,22 @@ struct IndicatorDetailView: View {
         }
         .navigationTitle(template.name)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 16) {
-                    Button {
-                        withAnimation {
-                            template.isFavorite.toggle()
-                        }
-                    } label: {
-                        Image(systemName: template.isFavorite ? "star.fill" : "star")
-                            .foregroundStyle(template.isFavorite ? .yellow : .secondary)
+            ToolbarItem {
+                Button {
+                    withAnimation {
+                        template.isFavorite.toggle()
                     }
-
-                    Button {
-                        showingAddRecord = true
-                    } label: {
-                        Image(systemName: "plus")
-                    }
+                } label: {
+                    Image(systemName: template.isFavorite ? "star.fill" : "star")
+                        .foregroundStyle(template.isFavorite ? .yellow : .secondary)
                 }
+            }
+            ToolbarItem {
+                Button(
+                    "Add Record", systemImage: "plus",
+                    action: {
+                        showingAddRecord = true
+                    })
             }
         }
         .sheet(isPresented: $showingAddRecord) {

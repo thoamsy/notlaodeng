@@ -18,9 +18,15 @@ struct AddRecordView: View {
   @State private var testDate: Date = Date()
   @State private var note: String = ""
   @State private var labName: String = ""
+  @State private var selectedDetent: PresentationDetent = .medium
 
   var isValidValue: Bool {
     Double(value) != nil
+  }
+
+  /// 是否展开显示 optional 内容
+  private var isExpanded: Bool {
+    selectedDetent == .large
   }
 
   var body: some View {
@@ -55,6 +61,7 @@ struct AddRecordView: View {
           DatePicker("Test Date", selection: $testDate, displayedComponents: .date)
         }
 
+        // 仅在展开时显示 optional 内容
         Section("Optional") {
           TextField("Lab/Hospital Name", text: $labName)
           TextField("Note", text: $note, axis: .vertical)
@@ -78,6 +85,8 @@ struct AddRecordView: View {
         }
       }
     }
+    .presentationDetents([.medium, .large], selection: $selectedDetent)
+    .presentationDragIndicator(.visible)
   }
 
   private func saveRecord() {

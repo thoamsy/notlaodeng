@@ -39,6 +39,7 @@ struct MainTabView: View {
                 .tag(3)
         }
         .id(forceRedraw)
+        .tabBarMinimizeBehavior(.onScrollDown)
         .eraseToAnyView()
     }
 }
@@ -46,4 +47,3 @@ struct MainTabView: View {
 #Preview {
     MainTabView()
 }
-

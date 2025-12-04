@@ -130,24 +130,15 @@ struct IndicatorListView: View {
                     // 没有数据时显示空状态
                     emptyStateView
                 } else {
-                    // 有数据时显示完整 UI
-                    VStack(spacing: 0) {
-                        // 快速过滤栏
-                        filterBar
-
-                        // 当前过滤条件显示
-                        if hasActiveFilter {
-                            activeFiltersBar
-                        }
-
-                        // 内容
-                        if filteredTemplates.isEmpty {
-                            noResultsView
-                        } else {
-                            indicatorList
-                        }
-                    }
-                    .searchable(text: $searchText, prompt: "Search indicators")
+                    // 有数据时显示完整 UI - 提取到子视图以访问 isSearching 环境变量
+                    IndicatorListContent(
+                        filterBar: filterBar,
+                        activeFiltersBar: activeFiltersBar,
+                        noResultsView: noResultsView,
+                        indicatorList: indicatorList,
+                        hasActiveFilter: hasActiveFilter,
+                        isEmpty: filteredTemplates.isEmpty
+                    )
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button {
@@ -183,7 +174,8 @@ struct IndicatorListView: View {
             .navigationTitle("Health Indicators")
         }
         .id(forceRedraw)
-        .eraseToAnyView()
+        .searchable(text: $searchText, prompt: "Search indicators")
+        .searchToolbarBehavior(.minimize)
         .onChange(of: favoritesCount) { _, newCount in
             // Auto-remove favorites filter when there are no favorites
             if newCount == 0 && selectedQuickFilters.contains(.favorites) {
@@ -192,6 +184,7 @@ struct IndicatorListView: View {
                 }
             }
         }
+        .eraseToAnyView()
     }
 
     // MARK: - 快速过滤栏
@@ -252,7 +245,7 @@ struct IndicatorListView: View {
                             shouldUnion: shouldUnionActiveFilter(at: index),
                             namespace: activeFilterNamespace
                         ) {
-                            withAnimation(.spring(response: 0.3)) {
+                            withAnimation {
                                 if item.isCategory {
                                     if let category = IndicatorCategory.allCases.first(where: {
                                         $0.rawValue == item.text
@@ -374,53 +367,28 @@ struct FilterSheetView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
-                    // Category Section
-                    FilterSection(title: "Category", icon: "folder") {
-                        FlowLayout(spacing: 10) {
-                            ForEach(IndicatorCategory.allCases, id: \.self) { category in
-                                FilterSelectableBadge(
-                                    icon: category.icon,
-                                    text: category.rawValue,
-                                    isSelected: tempCategories.contains(category),
-                                    tintColor: .blue
-                                ) {
-                                    withAnimation(.spring(response: 0.3)) {
-                                        if tempCategories.contains(category) {
-                                            _ = tempCategories.remove(category)
-                                        } else {
-                                            tempCategories.insert(category)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    FilterOptionGrid(
+                        title: "Category",
+                        icon: "folder",
+                        options: IndicatorCategory.allCases,
+                        selection: $tempCategories,
+                        tintColor: .blue,
+                        optionIcon: \.icon,
+                        optionText: \.rawValue
+                    )
 
-                    // Body Zone Section
-                    FilterSection(title: "Body Zone", icon: "figure.stand") {
-                        FlowLayout(spacing: 10) {
-                            ForEach(BodyZone.allCases, id: \.self) { zone in
-                                FilterSelectableBadge(
-                                    icon: zone.icon,
-                                    text: zone.rawValue,
-                                    isSelected: tempBodyZones.contains(zone),
-                                    tintColor: .purple
-                                ) {
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                        if tempBodyZones.contains(zone) {
-                                            _ = tempBodyZones.remove(zone)
-                                        } else {
-                                            tempBodyZones.insert(zone)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    FilterOptionGrid(
+                        title: "Body Zone",
+                        icon: "figure.stand",
+                        options: BodyZone.allCases,
+                        selection: $tempBodyZones,
+                        tintColor: .purple,
+                        optionIcon: \.icon,
+                        optionText: \.rawValue
+                    )
                 }
                 .padding()
             }
-            .background(Color(.systemGroupedBackground))
             .navigationTitle("Filters")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -475,6 +443,41 @@ struct FilterSection<Content: View>: View {
     }
 }
 
+// MARK: - Filter Option Grid (泛型过滤选项网格)
+
+struct FilterOptionGrid<T: Hashable>: View {
+    let title: String
+    let icon: String
+    let options: [T]
+    @Binding var selection: Set<T>
+    let tintColor: Color
+    let optionIcon: KeyPath<T, String>
+    let optionText: KeyPath<T, String>
+
+    var body: some View {
+        FilterSection(title: title, icon: icon) {
+            FlowLayout(spacing: 10) {
+                ForEach(options, id: \.self) { option in
+                    FilterSelectableBadge(
+                        icon: option[keyPath: optionIcon],
+                        text: option[keyPath: optionText],
+                        isSelected: selection.contains(option),
+                        tintColor: tintColor
+                    ) {
+                        withAnimation {
+                            if selection.contains(option) {
+                                _ = selection.remove(option)
+                            } else {
+                                selection.insert(option)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Filter Selectable Badge (Sheet 内使用，无融合)
 
 struct FilterSelectableBadge: View {
@@ -484,20 +487,27 @@ struct FilterSelectableBadge: View {
     let tintColor: Color
     let action: () -> Void
 
+    @ViewBuilder
     var body: some View {
-        Button(action: action) {
-            Label(text, systemImage: icon)
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .foregroundStyle(isSelected ? .white : .primary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+        if isSelected {
+            Button(action: action) {
+                Label(text, systemImage: icon)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.white)
+            }
+            .buttonStyle(.glassProminent)
+            .id(text)
+        } else {
+            Button(action: action) {
+                Label(text, systemImage: icon)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.primary)
+            }
+            .buttonStyle(.glass)
+            .id(text)
         }
-        .buttonStyle(.plain)
-        .glassEffect(
-            .regular.tint(isSelected ? tintColor : .clear).interactive(),
-            in: .capsule
-        )
     }
 }
 
@@ -696,6 +706,41 @@ struct StatusBadge: View {
             .frame(width: 32, height: 32)
             .background(status.backgroundColor)
             .clipShape(Circle())
+    }
+}
+
+// MARK: - Indicator List Content (子视图，用于访问 isSearching)
+
+struct IndicatorListContent<
+    FilterBar: View, ActiveFiltersBar: View, NoResultsView: View, IndicatorList: View
+>: View {
+    @Environment(\.isSearching) private var isSearching
+
+    let filterBar: FilterBar
+    let activeFiltersBar: ActiveFiltersBar
+    let noResultsView: NoResultsView
+    let indicatorList: IndicatorList
+    let hasActiveFilter: Bool
+    let isEmpty: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // 搜索时隐藏过滤栏
+            if !isSearching {
+                filterBar
+
+                if hasActiveFilter {
+                    activeFiltersBar
+                }
+            }
+
+            // 内容
+            if isEmpty {
+                noResultsView
+            } else {
+                indicatorList
+            }
+        }
     }
 }
 

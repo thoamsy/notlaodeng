@@ -130,9 +130,7 @@ struct QuickFilterBar: View {
                             tintColor: isUnioned ? unionColor(at: index) : filter.color,
                             namespace: namespace
                         ) {
-                            withAnimation(
-                                .spring(response: 0.3, dampingFraction: 0.8, blendDuration: 0.2)
-                            ) {
+                            withAnimation {
                                 if selectedFilters.contains(filter) {
                                     selectedFilters.remove(filter)
                                 } else {
@@ -160,38 +158,44 @@ struct QuickFilterChip: View {
     var namespace: Namespace.ID
     let action: () -> Void
 
-    /// 选中时的前景色（根据 tint 颜色自动选择对比色）
-    private var foregroundColor: Color {
+    /// 图标颜色（选中时白色，未选中时使用 filter 自身的颜色）
+    private var iconColor: Color {
+        isSelected ? .white : filter.color
+    }
+
+    /// 文字颜色
+    private var textColor: Color {
         isSelected ? .white : .primary
     }
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
-                // 融合时只显示图标，未融合时显示完整 Label
-                if isUnioned {
-                    Image(systemName: filter.icon)
+            HStack(spacing: 4) {
+                Image(systemName: filter.icon)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(iconColor)
+
+                // 融合时只显示图标，未融合时显示完整内容
+                if !isUnioned {
+                    Text(filter.title)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                } else {
-                    Label(filter.title, systemImage: filter.icon)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
+                        .foregroundStyle(textColor)
                 }
 
                 if count > 0 {
                     Text("\(count)")
                         .font(.caption)
-                        .fontWeight(.bold)
+                        .fontWeight(.medium)
+                        .foregroundStyle(textColor)
                 }
             }
-            .foregroundStyle(foregroundColor)
             .padding(.horizontal, isUnioned ? 10 : 12)
             .padding(.vertical, 8)
         }
-        .buttonStyle(.plain)
         .glassEffect(
-            .regular.tint(isSelected ? tintColor : .clear).interactive(),
+            isSelected ? .regular.tint(tintColor).interactive() : .regular.interactive(),
             in: .capsule
         )
         .modifier(

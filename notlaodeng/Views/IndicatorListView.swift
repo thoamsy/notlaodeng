@@ -184,6 +184,14 @@ struct IndicatorListView: View {
         }
         .id(forceRedraw)
         .eraseToAnyView()
+        .onChange(of: favoritesCount) { _, newCount in
+            // Auto-remove favorites filter when there are no favorites
+            if newCount == 0 && selectedQuickFilters.contains(.favorites) {
+                withAnimation {
+                    _ = selectedQuickFilters.remove(.favorites)
+                }
+            }
+        }
     }
 
     // MARK: - 快速过滤栏

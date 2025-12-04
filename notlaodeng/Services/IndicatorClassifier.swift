@@ -36,11 +36,11 @@ class KeywordIndicatorClassifier: IndicatorClassifying {
     private init() {}
 
     func classify(name: String, unit: String) -> IndicatorClassification {
-        let bodyZone = inferBodyZone(from: name, unit: unit)
+        let (bodyZone, bodyZoneMatched) = inferBodyZone(from: name, unit: unit)
         let category = inferCategory(from: name, unit: unit)
 
         let confidence: IndicatorClassification.ClassificationConfidence =
-            (bodyZone != .fullBody || category != .other) ? .medium : .low
+            (bodyZoneMatched || category != .other) ? .medium : .low
 
         return IndicatorClassification(
             bodyZone: bodyZone,
@@ -51,7 +51,8 @@ class KeywordIndicatorClassifier: IndicatorClassifying {
 
     // MARK: - Body Zone 推断
 
-    private func inferBodyZone(from name: String, unit: String) -> BodyZone {
+    /// Returns (bodyZone, didMatch) - didMatch is true if keywords matched, false if using default fallback
+    private func inferBodyZone(from name: String, unit: String) -> (BodyZone, Bool) {
         let text = name.lowercased()
 
         // 血液相关
@@ -63,7 +64,7 @@ class KeywordIndicatorClassifier: IndicatorClassifying {
                 "网织红", "血沉", "凝血", "纤维蛋白",
             ])
         {
-            return .blood
+            return (.blood, true)
         }
 
         // 肝脏相关
@@ -75,7 +76,7 @@ class KeywordIndicatorClassifier: IndicatorClassifying {
                 "谷丙", "谷草", "胆汁酸",
             ])
         {
-            return .liver
+            return (.liver, true)
         }
 
         // 肾脏相关
@@ -86,7 +87,7 @@ class KeywordIndicatorClassifier: IndicatorClassifying {
                 "胱抑素", "肾小球",
             ])
         {
-            return .kidney
+            return (.kidney, true)
         }
 
         // 心血管相关
@@ -98,7 +99,7 @@ class KeywordIndicatorClassifier: IndicatorClassifying {
                 "同型半胱氨酸",
             ])
         {
-            return .heart
+            return (.heart, true)
         }
 
         // 甲状腺相关
@@ -109,7 +110,7 @@ class KeywordIndicatorClassifier: IndicatorClassifying {
                 "甲功", "抗甲状腺",
             ])
         {
-            return .thyroid
+            return (.thyroid, true)
         }
 
         // 血脂（归入心血管）
@@ -120,7 +121,7 @@ class KeywordIndicatorClassifier: IndicatorClassifying {
                 "载脂蛋白", "血脂",
             ])
         {
-            return .heart
+            return (.heart, true)
         }
 
         // 血糖（归入全身代谢）
@@ -131,7 +132,7 @@ class KeywordIndicatorClassifier: IndicatorClassifying {
                 "glu", "hba1c",
             ])
         {
-            return .fullBody
+            return (.fullBody, true)
         }
 
         // 消化系统
@@ -142,7 +143,7 @@ class KeywordIndicatorClassifier: IndicatorClassifying {
                 "胃蛋白酶", "胃泌素",
             ])
         {
-            return .digestive
+            return (.digestive, true)
         }
 
         // 泌尿系统
@@ -153,43 +154,43 @@ class KeywordIndicatorClassifier: IndicatorClassifying {
                 "尿比重", "尿ph", "尿白细胞",
             ])
         {
-            return .urinary
+            return (.urinary, true)
         }
 
         // 眼科
         if matchesAny(text, keywords: ["眼", "视力", "眼压", "裸眼", "矫正视力"]) {
-            return .eye
+            return (.eye, true)
         }
 
         // 耳鼻喉
         if matchesAny(text, keywords: ["听力", "耳", "鼻", "咽"]) {
-            return .ear
+            return (.ear, true)
         }
 
         // 口腔
         if matchesAny(text, keywords: ["口腔", "牙", "龋"]) {
-            return .oral
+            return (.oral, true)
         }
 
         // 肺部
         if matchesAny(text, keywords: ["肺", "肺活量", "呼吸", "fvc", "fev"]) {
-            return .lung
+            return (.lung, true)
         }
 
         // 骨骼
         if matchesAny(text, keywords: ["骨", "骨密度", "钙", "磷", "维生素d", "碱性磷酸酶"]) {
-            return .bone
+            return (.bone, true)
         }
 
         // 肿瘤标志物（归入相关器官）
         if matchesAny(text, keywords: ["afp", "甲胎蛋白"]) {
-            return .liver
+            return (.liver, true)
         }
         if matchesAny(text, keywords: ["psa", "前列腺"]) {
-            return .reproductive
+            return (.reproductive, true)
         }
         if matchesAny(text, keywords: ["cea", "癌胚抗原", "ca", "肿瘤标志"]) {
-            return .fullBody
+            return (.fullBody, true)
         }
 
         // 生殖系统
@@ -200,15 +201,15 @@ class KeywordIndicatorClassifier: IndicatorClassifying {
                 "精液", "前列腺",
             ])
         {
-            return .reproductive
+            return (.reproductive, true)
         }
 
         // 常规检查
         if matchesAny(text, keywords: ["身高", "体重", "bmi", "体重指数", "腰围"]) {
-            return .fullBody
+            return (.fullBody, true)
         }
 
-        return .fullBody
+        return (.fullBody, false)
     }
 
     // MARK: - Category 推断

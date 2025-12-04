@@ -5,9 +5,9 @@
 //  指标详情视图
 //
 
-import SwiftUI
-import SwiftData
 import Charts
+import SwiftData
+import SwiftUI
 
 struct IndicatorDetailView: View {
     @ObserveInjection var forceRedraw
@@ -69,10 +69,21 @@ struct IndicatorDetailView: View {
         .navigationTitle(template.name)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showingAddRecord = true
-                } label: {
-                    Image(systemName: "plus")
+                HStack(spacing: 16) {
+                    Button {
+                        withAnimation {
+                            template.isFavorite.toggle()
+                        }
+                    } label: {
+                        Image(systemName: template.isFavorite ? "star.fill" : "star")
+                            .foregroundStyle(template.isFavorite ? .yellow : .secondary)
+                    }
+
+                    Button {
+                        showingAddRecord = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
                 }
             }
         }
@@ -125,7 +136,8 @@ struct IndicatorDetailView: View {
 
             Image(systemName: template.bodyZone.icon)
                 .font(.system(size: 40))
-                .foregroundStyle(status.isAbnormal ? status.color.opacity(0.6) : .blue.opacity(0.6))
+                .foregroundStyle(
+                    status.isAbnormal ? status.color.opacity(0.6) : .blue.opacity(0.6))
         }
         .padding(.vertical, 8)
     }

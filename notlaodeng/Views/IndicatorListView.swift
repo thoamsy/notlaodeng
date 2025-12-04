@@ -47,6 +47,7 @@ struct IndicatorListView: View {
     @State private var selectedFilter: IndicatorFilter = .all
     @State private var searchText = ""
     @State private var showingFilterSheet = false
+    @State private var showFavoritesOnly = false
 
     private var currentGender: Gender {
         profiles.first?.gender ?? .male
@@ -77,9 +78,18 @@ struct IndicatorListView: View {
         }.count
     }
 
+    private var favoritesCount: Int {
+        templatesWithData.filter { $0.isFavorite }.count
+    }
+
     var filteredTemplates: [IndicatorTemplate] {
         // 只显示有数据的模板
         var result = templatesWithData
+
+        // 收藏过滤
+        if showFavoritesOnly {
+            result = result.filter { $0.isFavorite }
+        }
 
         // 状态过滤
         switch selectedFilter {
@@ -198,6 +208,18 @@ struct IndicatorListView: View {
     private var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
+                // 收藏过滤按钮（只在有收藏时显示）
+                if favoritesCount > 0 {
+                    FavoriteFilterChip(
+                        count: favoritesCount,
+                        isSelected: showFavoritesOnly
+                    ) {
+                        withAnimation(.spring(response: 0.3)) {
+                            showFavoritesOnly.toggle()
+                        }
+                    }
+                }
+
                 ForEach(IndicatorFilter.allCases, id: \.self) { filter in
                     FilterChip(
                         filter: filter,
@@ -309,6 +331,19 @@ struct IndicatorListView: View {
                 Section {
                     ForEach(groupedTemplates[category] ?? []) { template in
                         IndicatorRow(template: template, gender: currentGender)
+                            .swipeActions(edge: .trailing) {
+                                Button {
+                                    withAnimation {
+                                        template.isFavorite.toggle()
+                                    }
+                                } label: {
+                                    Label(
+                                        template.isFavorite ? "Unfavorite" : "Favorite",
+                                        systemImage: template.isFavorite ? "star.slash" : "star"
+                                    )
+                                }
+                                .tint(.yellow)
+                            }
                     }
                 } header: {
                     CategorySectionHeader(category: category)
@@ -570,6 +605,39 @@ struct CategorySectionHeader: View {
                 .font(.subheadline)
                 .fontWeight(.semibold)
         }
+    }
+}
+
+// MARK: - 收藏过滤芯片
+
+struct FavoriteFilterChip: View {
+    let count: Int
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Label("Favorites", systemImage: "star.fill")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.caption)
+                        .fontWeight(.bold)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(isSelected ? .white.opacity(0.3) : Color.yellow.opacity(0.2))
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+        .foregroundStyle(isSelected ? .white : .yellow)
+        .background(isSelected ? .yellow : .yellow.opacity(0.2))
+        .clipShape(Capsule())
     }
 }
 

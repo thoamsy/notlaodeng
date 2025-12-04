@@ -262,6 +262,9 @@ final class IndicatorTemplate {
     var femaleRangeMin: Double?
     var femaleRangeMax: Double?
 
+    // 收藏状态
+    var isFavorite: Bool = false
+
     @Relationship(deleteRule: .cascade, inverse: \HealthRecord.template)
     var records: [HealthRecord] = []
 

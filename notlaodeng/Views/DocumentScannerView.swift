@@ -204,6 +204,8 @@ struct ScanReportView: View {
     let descriptor = FetchDescriptor<IndicatorTemplate>()
     let templates = (try? modelContext.fetch(descriptor)) ?? []
 
+    let classifier = KeywordIndicatorClassifier.shared
+
     for indicator in indicators {
       // 尝试匹配现有模板
       let matchedTemplate = templates.first { template in
@@ -215,12 +217,18 @@ struct ScanReportView: View {
       if let existing = matchedTemplate {
         template = existing
       } else {
+        // 使用分类器推断 bodyZone 和 category
+        let classification = classifier.classify(
+          name: indicator.name,
+          unit: indicator.unit
+        )
+
         // 创建新模板
         template = IndicatorTemplate(
           name: indicator.name,
           unit: indicator.unit,
-          bodyZone: .fullBody,
-          category: .other,
+          bodyZone: classification.bodyZone,
+          category: classification.category,
           referenceRangeMin: indicator.referenceMin,
           referenceRangeMax: indicator.referenceMax,
           referenceRangeText: indicator.referenceRange.isEmpty ? "-" : indicator.referenceRange

@@ -40,6 +40,7 @@ struct IndicatorListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \IndicatorTemplate.name) private var templates: [IndicatorTemplate]
     @Query private var profiles: [UserProfile]
+    @Query private var allRecords: [HealthRecord]
 
     @State private var selectedCategories: Set<IndicatorCategory> = []
     @State private var selectedBodyZones: Set<BodyZone> = []
@@ -49,6 +50,16 @@ struct IndicatorListView: View {
 
     private var currentGender: Gender {
         profiles.first?.gender ?? .male
+    }
+
+    /// 是否有任何健康记录数据
+    private var hasAnyData: Bool {
+        !allRecords.isEmpty
+    }
+
+    /// 只显示有数据的模板
+    private var templatesWithData: [IndicatorTemplate] {
+        templates.filter { $0.latestRecord != nil }
     }
 
     // 统计数据
@@ -67,7 +78,8 @@ struct IndicatorListView: View {
     }
 
     var filteredTemplates: [IndicatorTemplate] {
-        var result = templates
+        // 只显示有数据的模板
+        var result = templatesWithData
 
         // 状态过滤
         switch selectedFilter {
@@ -120,58 +132,62 @@ struct IndicatorListView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // 快速过滤栏
-                filterBar
+            Group {
+                if !hasAnyData {
+                    // 没有数据时显示空状态
+                    emptyStateView
+                } else {
+                    // 有数据时显示完整 UI
+                    VStack(spacing: 0) {
+                        // 快速过滤栏
+                        filterBar
 
-                // 当前过滤条件显示
-                if hasActiveFilter {
-                    activeFiltersBar
-                }
+                        // 当前过滤条件显示
+                        if hasActiveFilter {
+                            activeFiltersBar
+                        }
 
-                // 内容
-                Group {
-                    if templates.isEmpty {
-                        emptyStateView
-                    } else if filteredTemplates.isEmpty {
-                        noResultsView
-                    } else {
-                        indicatorList
+                        // 内容
+                        if filteredTemplates.isEmpty {
+                            noResultsView
+                        } else {
+                            indicatorList
+                        }
+                    }
+                    .searchable(text: $searchText, prompt: "Search indicators")
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                showingFilterSheet = true
+                            } label: {
+                                ZStack(alignment: .topTrailing) {
+                                    Image(systemName: "slider.horizontal.3")
+                                        .font(.body)
+
+                                    if activeFilterCount > 0 {
+                                        Text("\(activeFilterCount)")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundStyle(.white)
+                                            .frame(width: 16, height: 16)
+                                            .background(.blue)
+                                            .clipShape(Circle())
+                                            .offset(x: 8, y: -8)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .sheet(isPresented: $showingFilterSheet) {
+                        FilterSheetView(
+                            selectedCategories: $selectedCategories,
+                            selectedBodyZones: $selectedBodyZones
+                        )
+                        .presentationDetents([.medium, .large])
+                        .presentationDragIndicator(.visible)
                     }
                 }
             }
             .navigationTitle("Health Indicators")
-            .searchable(text: $searchText, prompt: "Search indicators")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingFilterSheet = true
-                    } label: {
-                        ZStack(alignment: .topTrailing) {
-                            Image(systemName: "slider.horizontal.3")
-                                .font(.body)
-
-                            if activeFilterCount > 0 {
-                                Text("\(activeFilterCount)")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 16, height: 16)
-                                    .background(.blue)
-                                    .clipShape(Circle())
-                                    .offset(x: 8, y: -8)
-                            }
-                        }
-                    }
-                }
-            }
-            .sheet(isPresented: $showingFilterSheet) {
-                FilterSheetView(
-                    selectedCategories: $selectedCategories,
-                    selectedBodyZones: $selectedBodyZones
-                )
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-            }
         }
         .id(forceRedraw)
         .eraseToAnyView()
@@ -261,9 +277,14 @@ struct IndicatorListView: View {
 
     private var emptyStateView: some View {
         ContentUnavailableView {
-            Label("No Indicators", systemImage: "list.bullet.clipboard")
+            Label("No Health Data", systemImage: "heart.text.clipboard")
         } description: {
-            Text("Add health indicators to start tracking your health data.")
+            VStack(spacing: 8) {
+                Text("Import your health checkup reports to start tracking your indicators.")
+                Text("Go to **Reports** tab to scan or import PDF.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -469,6 +490,19 @@ struct FlowLayout: Layout {
     }
 }
 
+// MARK: - Glass Button Style Helper
+
+extension View {
+    @ViewBuilder
+    func glassButtonStyle(prominent: Bool) -> some View {
+        if prominent {
+            self.buttonStyle(.glassProminent)
+        } else {
+            self.buttonStyle(.glass)
+        }
+    }
+}
+
 // MARK: - iOS 26 风格透明 Badge（可选中）
 
 struct GlassSelectableBadge: View {
@@ -478,53 +512,12 @@ struct GlassSelectableBadge: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .medium))
-
-                Text(text)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
+        Button(text, systemImage: icon) {
+            withAnimation {
+                action()
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .foregroundStyle(isSelected ? .white : .primary.opacity(0.85))
-            .background {
-                if isSelected {
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [.blue, .blue.opacity(0.85)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                } else {
-                    Capsule()
-                        .fill(.white.opacity(0.7))
-                        .background(
-                            Capsule()
-                                .fill(.thinMaterial)
-                        )
-                        .overlay(
-                            Capsule()
-                                .strokeBorder(
-                                    LinearGradient(
-                                        colors: [.white.opacity(0.6), .white.opacity(0.2)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    ),
-                                    lineWidth: 1
-                                )
-                        )
-                }
-            }
-            .shadow(
-                color: isSelected ? .blue.opacity(0.35) : .black.opacity(0.06),
-                radius: isSelected ? 10 : 4, y: isSelected ? 4 : 2)
         }
-        .buttonStyle(.plain)
+        .glassButtonStyle(prominent: isSelected)
     }
 }
 
@@ -591,10 +584,8 @@ struct FilterChip: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Image(systemName: filter.icon)
-                    .font(.system(size: 14, weight: .medium))
 
-                Text(filter.rawValue)
+                Label(filter.rawValue, systemImage: filter.icon)
                     .font(.subheadline)
                     .fontWeight(.medium)
 
@@ -608,13 +599,14 @@ struct FilterChip: View {
                         .clipShape(Capsule())
                 }
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .foregroundStyle(isSelected ? .white : filter.color)
-            .background(isSelected ? filter.color : filter.color.opacity(0.1))
-            .clipShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .foregroundStyle(isSelected ? .white : filter.color)
+        .background(isSelected ? filter.color : filter.color.opacity(0.2))
+        .clipShape(Capsule())
+        // .buttonBorderShape(.capsule)
+        // .glassEffect(.regular.interactive(), in: .capsule)
     }
 }
 

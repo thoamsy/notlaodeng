@@ -196,53 +196,89 @@ struct IndicatorListView: View {
         )
     }
 
-    // MARK: - 当前过滤条件
+    // MARK: - 当前过滤条件（融合效果）
+
+    @Namespace private var activeFilterNamespace
+
+    /// 所有活跃的 filter items（用于计算融合）
+    private var activeFilterItems: [(id: String, icon: String, text: String, isCategory: Bool)] {
+        var items: [(id: String, icon: String, text: String, isCategory: Bool)] = []
+        for category in selectedCategories.sorted(by: { $0.rawValue < $1.rawValue }) {
+            items.append(
+                (
+                    id: "cat-\(category.rawValue)", icon: category.icon, text: category.rawValue,
+                    isCategory: true
+                ))
+        }
+        for zone in selectedBodyZones.sorted(by: { $0.rawValue < $1.rawValue }) {
+            items.append(
+                (
+                    id: "zone-\(zone.rawValue)", icon: zone.icon, text: zone.rawValue,
+                    isCategory: false
+                ))
+        }
+        return items
+    }
+
+    /// 判断是否应该融合（有多个 filter 时融合）
+    private func shouldUnionActiveFilter(at index: Int) -> Bool {
+        let items = activeFilterItems
+        guard items.count > 1 else { return false }
+
+        // 检查左右是否有相邻 item
+        let hasLeft = index > 0
+        let hasRight = index < items.count - 1
+
+        return hasLeft || hasRight
+    }
 
     @ViewBuilder
     private var activeFiltersBar: some View {
-        let bgColor = Color.gray.opacity(0.1)
-
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(Array(selectedCategories), id: \.self) { category in
-                    GlassFilterTag(
-                        icon: category.icon,
-                        text: category.rawValue
-                    ) {
-                        withAnimation(.spring(response: 0.3)) {
-                            _ = selectedCategories.remove(category)
+            GlassEffectContainer {
+                HStack(spacing: 8) {
+                    ForEach(Array(activeFilterItems.enumerated()), id: \.element.id) {
+                        index, item in
+                        ActiveFilterTag(
+                            icon: item.icon,
+                            shouldUnion: shouldUnionActiveFilter(at: index),
+                            namespace: activeFilterNamespace
+                        ) {
+                            withAnimation(.spring(response: 0.3)) {
+                                if item.isCategory {
+                                    if let category = IndicatorCategory.allCases.first(where: {
+                                        $0.rawValue == item.text
+                                    }) {
+                                        _ = selectedCategories.remove(category)
+                                    }
+                                } else {
+                                    if let zone = BodyZone.allCases.first(where: {
+                                        $0.rawValue == item.text
+                                    }) {
+                                        _ = selectedBodyZones.remove(zone)
+                                    }
+                                }
+                            }
                         }
                     }
-                }
 
-                ForEach(Array(selectedBodyZones), id: \.self) { zone in
-                    GlassFilterTag(
-                        icon: zone.icon,
-                        text: zone.rawValue
-                    ) {
-                        withAnimation(.spring(response: 0.3)) {
-                            _ = selectedBodyZones.remove(zone)
+                    if hasActiveFilter {
+                        Button {
+                            withAnimation(.spring(response: 0.3)) {
+                                selectedCategories.removeAll()
+                                selectedBodyZones.removeAll()
+                            }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.body)
                         }
+                        .buttonStyle(.glass)
                     }
                 }
-
-                if hasActiveFilter {
-                    Button {
-                        withAnimation(.spring(response: 0.3)) {
-                            selectedCategories.removeAll()
-                            selectedBodyZones.removeAll()
-                        }
-                    } label: {
-                        Text("Clear All")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
             }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
         }
-        .background(bgColor)
     }
 
     // MARK: - 空状态
@@ -334,15 +370,18 @@ struct FilterSheetView: View {
                     FilterSection(title: "Category", icon: "folder") {
                         FlowLayout(spacing: 10) {
                             ForEach(IndicatorCategory.allCases, id: \.self) { category in
-                                GlassSelectableBadge(
+                                FilterSelectableBadge(
                                     icon: category.icon,
                                     text: category.rawValue,
-                                    isSelected: tempCategories.contains(category)
+                                    isSelected: tempCategories.contains(category),
+                                    tintColor: .blue
                                 ) {
-                                    if tempCategories.contains(category) {
-                                        _ = tempCategories.remove(category)
-                                    } else {
-                                        tempCategories.insert(category)
+                                    withAnimation(.spring(response: 0.3)) {
+                                        if tempCategories.contains(category) {
+                                            _ = tempCategories.remove(category)
+                                        } else {
+                                            tempCategories.insert(category)
+                                        }
                                     }
                                 }
                             }
@@ -353,15 +392,18 @@ struct FilterSheetView: View {
                     FilterSection(title: "Body Zone", icon: "figure.stand") {
                         FlowLayout(spacing: 10) {
                             ForEach(BodyZone.allCases, id: \.self) { zone in
-                                GlassSelectableBadge(
+                                FilterSelectableBadge(
                                     icon: zone.icon,
                                     text: zone.rawValue,
-                                    isSelected: tempBodyZones.contains(zone)
+                                    isSelected: tempBodyZones.contains(zone),
+                                    tintColor: .purple
                                 ) {
-                                    if tempBodyZones.contains(zone) {
-                                        _ = tempBodyZones.remove(zone)
-                                    } else {
-                                        tempBodyZones.insert(zone)
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                        if tempBodyZones.contains(zone) {
+                                            _ = tempBodyZones.remove(zone)
+                                        } else {
+                                            tempBodyZones.insert(zone)
+                                        }
                                     }
                                 }
                             }
@@ -376,9 +418,10 @@ struct FilterSheetView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Reset") {
-                        selectedCategories.removeAll()
-                        selectedBodyZones.removeAll()
-                        dismiss()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            tempCategories.removeAll()
+                            tempBodyZones.removeAll()
+                        }
                     }
                     .foregroundStyle(hasTempSelections ? .red : .secondary)
                     .disabled(!hasTempSelections)
@@ -386,7 +429,6 @@ struct FilterSheetView: View {
 
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
-                        // 只有点击 Done 才保存更改
                         selectedCategories = tempCategories
                         selectedBodyZones = tempBodyZones
                         dismiss()
@@ -396,7 +438,6 @@ struct FilterSheetView: View {
             }
         }
         .onAppear {
-            // 初始化临时状态
             tempCategories = selectedCategories
             tempBodyZones = selectedBodyZones
         }
@@ -423,6 +464,32 @@ struct FilterSection<Content: View>: View {
 
             content()
         }
+    }
+}
+
+// MARK: - Filter Selectable Badge (Sheet 内使用，无融合)
+
+struct FilterSelectableBadge: View {
+    let icon: String
+    let text: String
+    let isSelected: Bool
+    let tintColor: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(text, systemImage: icon)
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundStyle(isSelected ? .white : .primary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+        }
+        .buttonStyle(.plain)
+        .glassEffect(
+            .regular.tint(isSelected ? tintColor : .clear).interactive(),
+            in: .capsule
+        )
     }
 }
 
@@ -479,67 +546,27 @@ struct FlowLayout: Layout {
     }
 }
 
-// MARK: - Glass Button Style Helper
+// MARK: - Active Filter Tag（支持融合的当前过滤标签）
 
-extension View {
-    @ViewBuilder
-    func glassButtonStyle(prominent: Bool) -> some View {
-        if prominent {
-            self.buttonStyle(.glassProminent)
-        } else {
-            self.buttonStyle(.glass)
-        }
-    }
-}
-
-// MARK: - iOS 26 风格透明 Badge（可选中）
-
-struct GlassSelectableBadge: View {
+struct ActiveFilterTag: View {
     let icon: String
-    let text: String
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(text, systemImage: icon) {
-            withAnimation {
-                action()
-            }
-        }
-        .glassButtonStyle(prominent: isSelected)
-    }
-}
-
-// MARK: - 当前过滤标签（玻璃风格）
-
-struct GlassFilterTag: View {
-    let icon: String
-    let text: String
+    let shouldUnion: Bool
+    var namespace: Namespace.ID
     let onRemove: () -> Void
 
     var body: some View {
-        HStack(spacing: 6) {
+        Button(action: onRemove) {
             Image(systemName: icon)
-                .font(.system(size: 11, weight: .medium))
+                .font(.body)
 
-            Text(text)
-                .font(.caption)
-                .fontWeight(.medium)
-
-            Button(action: onRemove) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.secondary)
-            }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .foregroundStyle(.primary)
-        .background(.ultraThinMaterial)
-        .clipShape(Capsule())
-        .overlay(
-            Capsule()
-                .strokeBorder(.quaternary, lineWidth: 0.5)
+        .buttonStyle(.glassProminent)
+        .modifier(
+            ConditionalGlassUnion(
+                shouldUnion: shouldUnion,
+                unionID: "activeFilter",
+                namespace: namespace
+            )
         )
     }
 }

@@ -8,30 +8,6 @@
 import SwiftData
 import SwiftUI
 
-// MARK: - 过滤选项
-
-enum IndicatorFilter: String, CaseIterable {
-    case all = "All"
-    case abnormal = "Abnormal"
-    case normal = "Normal"
-
-    var icon: String {
-        switch self {
-        case .all: return "list.bullet"
-        case .abnormal: return "exclamationmark.triangle.fill"
-        case .normal: return "checkmark.circle.fill"
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .all: return .blue
-        case .abnormal: return .orange
-        case .normal: return .green
-        }
-    }
-}
-
 // MARK: - 主视图
 
 struct IndicatorListView: View {
@@ -42,12 +18,13 @@ struct IndicatorListView: View {
     @Query private var profiles: [UserProfile]
     @Query private var allRecords: [HealthRecord]
 
+    @Namespace private var filterNamespace
+
     @State private var selectedCategories: Set<IndicatorCategory> = []
     @State private var selectedBodyZones: Set<BodyZone> = []
-    @State private var selectedFilter: IndicatorFilter = .all
     @State private var searchText = ""
     @State private var showingFilterSheet = false
-    @State private var showFavoritesOnly = false
+    @State private var selectedQuickFilters: Set<QuickFilterType> = []
 
     private var currentGender: Gender {
         profiles.first?.gender ?? .male
@@ -63,18 +40,16 @@ struct IndicatorListView: View {
         templates.filter { $0.latestRecord != nil }
     }
 
-    // 统计数据
+    // 统计数据（基于有数据的模板）
     private var abnormalCount: Int {
-        templates.filter { template in
-            guard let record = template.latestRecord else { return false }
-            return record.status(for: currentGender).isAbnormal
+        templatesWithData.filter { template in
+            template.latestRecord?.status(for: currentGender).isAbnormal == true
         }.count
     }
 
     private var normalCount: Int {
-        templates.filter { template in
-            guard let record = template.latestRecord else { return false }
-            return record.status(for: currentGender) == .normal
+        templatesWithData.filter { template in
+            template.latestRecord?.status(for: currentGender) == .normal
         }.count
     }
 
@@ -82,32 +57,40 @@ struct IndicatorListView: View {
         templatesWithData.filter { $0.isFavorite }.count
     }
 
+    /// 过滤器数量字典（传给 QuickFilterBar）
+    private var filterCounts: [QuickFilterType: Int] {
+        [
+            .favorites: favoritesCount,
+            .abnormal: abnormalCount,
+            .normal: normalCount,
+        ]
+    }
+
+    /// 判断模板是否匹配某个过滤器
+    private func matches(_ template: IndicatorTemplate, filter: QuickFilterType) -> Bool {
+        switch filter {
+        case .favorites:
+            return template.isFavorite
+        case .abnormal:
+            return template.latestRecord?.status(for: currentGender).isAbnormal == true
+        case .normal:
+            return template.latestRecord?.status(for: currentGender) == .normal
+        }
+    }
+
     var filteredTemplates: [IndicatorTemplate] {
-        // 只显示有数据的模板
         var result = templatesWithData
 
-        // 收藏过滤
-        if showFavoritesOnly {
-            result = result.filter { $0.isFavorite }
-        }
-
-        // 状态过滤
-        switch selectedFilter {
-        case .all:
-            break
-        case .abnormal:
+        // 快速过滤（OR 逻辑：匹配任一选中的过滤器即可）
+        if !selectedQuickFilters.isEmpty {
             result = result.filter { template in
-                guard let record = template.latestRecord else { return false }
-                return record.status(for: currentGender).isAbnormal
-            }
-        case .normal:
-            result = result.filter { template in
-                guard let record = template.latestRecord else { return false }
-                return record.status(for: currentGender) == .normal
+                selectedQuickFilters.contains { filter in
+                    matches(template, filter: filter)
+                }
             }
         }
 
-        // 分类过滤（多选）
+        // 分类过滤（多选，AND with quick filters）
         if !selectedCategories.isEmpty {
             result = result.filter { selectedCategories.contains($0.category) }
         }
@@ -206,36 +189,11 @@ struct IndicatorListView: View {
     // MARK: - 快速过滤栏
 
     private var filterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                // 收藏过滤按钮（只在有收藏时显示）
-                if favoritesCount > 0 {
-                    FavoriteFilterChip(
-                        count: favoritesCount,
-                        isSelected: showFavoritesOnly
-                    ) {
-                        withAnimation(.spring(response: 0.3)) {
-                            showFavoritesOnly.toggle()
-                        }
-                    }
-                }
-
-                ForEach(IndicatorFilter.allCases, id: \.self) { filter in
-                    FilterChip(
-                        filter: filter,
-                        count: countFor(filter),
-                        isSelected: selectedFilter == filter
-                    ) {
-                        withAnimation(.spring(response: 0.3)) {
-                            selectedFilter = filter
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 12)
-        }
-        .background(.ultraThinMaterial)
+        QuickFilterBar(
+            selectedFilters: $selectedQuickFilters,
+            filterCounts: filterCounts,
+            namespace: filterNamespace
+        )
     }
 
     // MARK: - 当前过滤条件
@@ -287,14 +245,6 @@ struct IndicatorListView: View {
         .background(bgColor)
     }
 
-    private func countFor(_ filter: IndicatorFilter) -> Int {
-        switch filter {
-        case .all: return templates.filter { $0.latestRecord != nil }.count
-        case .abnormal: return abnormalCount
-        case .normal: return normalCount
-        }
-    }
-
     // MARK: - 空状态
 
     private var emptyStateView: some View {
@@ -314,7 +264,11 @@ struct IndicatorListView: View {
         ContentUnavailableView {
             Label("No Results", systemImage: "magnifyingglass")
         } description: {
-            if selectedFilter == .abnormal {
+            // 只选了 Abnormal 且没有结果时，说明没有异常指标
+            let onlyAbnormal =
+                selectedQuickFilters == [.abnormal]
+                || (selectedQuickFilters.contains(.abnormal) && selectedQuickFilters.count == 1)
+            if onlyAbnormal {
                 Text("Great! No abnormal indicators found.")
             } else {
                 Text("Try adjusting your search or filter.")
@@ -605,76 +559,6 @@ struct CategorySectionHeader: View {
                 .font(.subheadline)
                 .fontWeight(.semibold)
         }
-    }
-}
-
-// MARK: - 收藏过滤芯片
-
-struct FavoriteFilterChip: View {
-    let count: Int
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Label("Favorites", systemImage: "star.fill")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-
-                if count > 0 {
-                    Text("\(count)")
-                        .font(.caption)
-                        .fontWeight(.bold)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(isSelected ? .white.opacity(0.3) : Color.yellow.opacity(0.2))
-                        .clipShape(Capsule())
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-        }
-        .foregroundStyle(isSelected ? .white : .yellow)
-        .background(isSelected ? .yellow : .yellow.opacity(0.2))
-        .clipShape(Capsule())
-    }
-}
-
-// MARK: - 过滤芯片
-
-struct FilterChip: View {
-    let filter: IndicatorFilter
-    let count: Int
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-
-                Label(filter.rawValue, systemImage: filter.icon)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-
-                if count > 0 {
-                    Text("\(count)")
-                        .font(.caption)
-                        .fontWeight(.bold)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(isSelected ? .white.opacity(0.3) : filter.color.opacity(0.2))
-                        .clipShape(Capsule())
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-        }
-        .foregroundStyle(isSelected ? .white : filter.color)
-        .background(isSelected ? filter.color : filter.color.opacity(0.2))
-        .clipShape(Capsule())
-        // .buttonBorderShape(.capsule)
-        // .glassEffect(.regular.interactive(), in: .capsule)
     }
 }
 
